@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "net2net-radius-api"
+version = "0.1.0"
+description = "API for Net2Net Local RADIUS Manager"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "cryptography>=46,<47",
+  "pydantic-settings>=2.10,<3",
+  "routeros-api>=0.21,<1",
+  "sqlmodel>=0.0.24,<1",
+  "psycopg[binary]>=3.2,<4",
+  "pyrad>=2.4,<3",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=8.4,<9",
+  "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

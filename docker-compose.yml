@@ -1,0 +1,25 @@
+services:
+  net2net-radius:
+    build: .
+    image: net2net/local-radius-manager:beta
+    container_name: net2net-radius-manager
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      APP_SECRET: ${APP_SECRET:?Set APP_SECRET in .env}
+      BOOTSTRAP_SUPERADMIN_PASSWORD: ${BOOTSTRAP_SUPERADMIN_PASSWORD:?Set the initial Super Admin password}
+      BOOTSTRAP_WISPADMIN_PASSWORD: ${BOOTSTRAP_WISPADMIN_PASSWORD:?Set the initial WISP Admin password}
+      RADIUS_SHARED_SECRET: ${RADIUS_SHARED_SECRET:?Set a long RADIUS secret}
+      RADIUS_CLIENT_NETWORK: ${RADIUS_CLIENT_NETWORK:-}
+      UISP_BASE_URL: ${UISP_BASE_URL:-}
+      UISP_API_TOKEN: ${UISP_API_TOKEN:-}
+      SHOW_LAB_DATA: "false"
+    ports:
+      - "8080:8080/tcp"
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    volumes:
+      - net2net-data:/data
+
+volumes:
+  net2net-data:

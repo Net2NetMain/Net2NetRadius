@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>
+    Net2Net Local RADIUS Manager provides an offline, per-WISP PPPoE RADIUS
+    management appliance for MikroTik networks. The application includes a
+    branded WISP portal, client portal, live PPPoE monitoring, local accounting,
+    IP pool allocation, MikroTik controls, and UISP CRM connectivity checks.
+  </Profile>
+</CommunityApplications>
