@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Net2Net Local RADIUS Manager</Name>
-  <Repository>net2net/local-radius-manager:beta</Repository>
-  <Registry>https://hub.docker.com/r/net2net/local-radius-manager</Registry>
+  <Repository>botchris/net2netradius:beta</Repository>
+  <Registry>https://hub.docker.com/r/botchris/net2netradius</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
