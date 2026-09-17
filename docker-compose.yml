@@ -1,7 +1,7 @@
 services:
   net2net-radius:
     build: .
-    image: botchris/net2netradius:beta
+    image: botchris/net2netradius:latest
     container_name: net2net-radius-manager
     restart: unless-stopped
     environment:
