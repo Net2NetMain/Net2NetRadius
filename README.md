@@ -34,7 +34,7 @@ docker compose up --build
 
 Open `http://SERVER-IP:8080`. The manual Unraid import template is [unraid/net2net-local-radius.xml](unraid/net2net-local-radius.xml). It is intentionally a beta template until an image registry and final public repository URL are selected.
 
-The Super Admin can create and download consistent SQLite backups through the protected `/api/system/backups` endpoint. The container retains the latest 14 backups by default.
+The Super Admin can create and download consistent SQLite backups from **Settings → Backup and move**. The container retains the latest 14 backups by default. For a complete server migration, stop the old container, copy its mapped `/data` appdata folder, and deploy the new container with the same `APP_SECRET` and `RADIUS_SHARED_SECRET`; the database contains encrypted router credentials and requires the original application secret to read them.
 
 ## Run the development build
 

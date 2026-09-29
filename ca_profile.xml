@@ -6,4 +6,5 @@
     branded WISP portal, client portal, live PPPoE monitoring, local accounting,
     IP pool allocation, MikroTik controls, and UISP CRM connectivity checks.
   </Profile>
+  <Icon>https://raw.githubusercontent.com/Net2NetMain/Net2NetRadius/main/apps/web/public/favicon.svg</Icon>
 </CommunityApplications>
