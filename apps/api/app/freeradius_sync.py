@@ -14,6 +14,7 @@ from .config import get_settings
 from .database import engine
 from .models import Package, Router, Status, Subscriber
 from .security import decrypt_secret
+from .platform_config import radius_shared_secret
 
 
 def _escape(value: str) -> str:
@@ -22,6 +23,7 @@ def _escape(value: str) -> str:
 
 def sync(config_dir: str = "/etc/freeradius/3.0") -> None:
     settings = get_settings()
+    shared_secret = radius_shared_secret()
     root = Path(config_dir)
     authorize = root / "mods-config/files/authorize"
     clients = root / "clients.conf"
@@ -63,7 +65,7 @@ def sync(config_dir: str = "/etc/freeradius/3.0") -> None:
     if settings.radius_client_network:
         client_lines.append(
             f'client net2net_private_wisp {{\n\tipaddr = {_escape(settings.radius_client_network)}\n'
-            f'\tsecret = "{_escape(settings.radius_shared_secret)}"\n\trequire_message_authenticator = yes\n}}\n\n'
+                f'\tsecret = "{_escape(shared_secret)}"\n\trequire_message_authenticator = yes\n}}\n\n'
         )
     seen: set[str] = set()
     for router in routers:
@@ -74,7 +76,7 @@ def sync(config_dir: str = "/etc/freeradius/3.0") -> None:
             name = "net2net_" + address.replace(".", "_").replace(":", "_")
             client_lines.extend([
                 f"client {name} {{\n", f"\tipaddr = {address}\n",
-                f'\tsecret = "{_escape(settings.radius_shared_secret)}"\n', "\trequire_message_authenticator = yes\n", "}\n\n",
+                f'\tsecret = "{_escape(shared_secret)}"\n', "\trequire_message_authenticator = yes\n", "}\n\n",
             ])
     clients.write_text("".join(client_lines), encoding="utf-8")
 

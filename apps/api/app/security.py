@@ -2,22 +2,20 @@ import base64
 import hashlib
 from pathlib import Path
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from .config import get_settings
 
 
 def _fernet() -> Fernet:
-    if get_settings().app_env == "development":
-        # Keep the development key beside the SQLite database.  A container
-        # replacement must not make existing subscriber credentials unreadable.
-        key_path = Path(get_settings().data_dir) / "secret.key"
-        key_path.parent.mkdir(parents=True, exist_ok=True)
-        if not key_path.exists():
-            key_path.write_bytes(Fernet.generate_key())
-        return Fernet(key_path.read_bytes())
-    digest = hashlib.sha256(get_settings().app_secret.encode()).digest()
-    return Fernet(base64.urlsafe_b64encode(digest))
+    # Local appliances keep their encryption key in the mapped /data folder.
+    # This lets an administrator manage all operational settings in the UI and
+    # keeps backups/restores readable without editing Docker variables.
+    key_path = Path(get_settings().data_dir) / "secret.key"
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    if not key_path.exists():
+        key_path.write_bytes(Fernet.generate_key())
+    return Fernet(key_path.read_bytes())
 
 
 def encrypt_secret(value: str) -> str:
@@ -25,4 +23,11 @@ def encrypt_secret(value: str) -> str:
 
 
 def decrypt_secret(value: str) -> str:
-    return _fernet().decrypt(value.encode()).decode()
+    try:
+        return _fernet().decrypt(value.encode()).decode()
+    except InvalidToken:
+        # One-time compatibility for records created by pre-interface releases
+        # that derived their key from the Docker APP_SECRET in production.
+        digest = hashlib.sha256(get_settings().app_secret.encode()).digest()
+        legacy = Fernet(base64.urlsafe_b64encode(digest))
+        return legacy.decrypt(value.encode()).decode()

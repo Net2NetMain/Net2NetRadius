@@ -45,6 +45,22 @@ class AppUserRead(SQLModel):
     created_at: datetime
 
 
+class PlatformConfiguration(SQLModel, table=True):
+    """One local-appliance configuration record, included in SQLite backups."""
+    id: int = Field(default=1, primary_key=True)
+    app_secret_ciphertext: str | None = None
+    radius_shared_secret_ciphertext: str | None = None
+    uisp_base_url: str = ""
+    uisp_api_token_ciphertext: str | None = None
+
+
+class PlatformConfigurationUpdate(SQLModel):
+    app_secret: str | None = Field(default=None, min_length=32, max_length=512)
+    radius_shared_secret: str | None = Field(default=None, min_length=12, max_length=512)
+    uisp_base_url: str | None = Field(default=None, max_length=500)
+    uisp_api_token: str | None = Field(default=None, max_length=2048)
+
+
 class PackageBase(SQLModel):
     name: str = Field(index=True, unique=True, min_length=2, max_length=80)
     advertised_down_mbps: float = Field(gt=0)

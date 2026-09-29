@@ -35,14 +35,10 @@ class Settings(BaseSettings):
         if self.app_env != "production":
             return
         unsafe = {"development-only-secret", "replace-with-a-long-random-value", "ChangeMe-Net2Net-2026!", "ChangeMe-WISP-2026!"}
-        if len(self.app_secret) < 32 or self.app_secret in unsafe:
-            raise RuntimeError("APP_SECRET must be a unique value of at least 32 characters in production")
         if self.bootstrap_superadmin_password in unsafe or len(self.bootstrap_superadmin_password) < 12:
             raise RuntimeError("Set a strong BOOTSTRAP_SUPERADMIN_PASSWORD before production startup")
         if self.bootstrap_wispadmin_password in unsafe or len(self.bootstrap_wispadmin_password) < 12:
             raise RuntimeError("Set a strong BOOTSTRAP_WISPADMIN_PASSWORD before production startup")
-        if len(self.radius_shared_secret) < 12:
-            raise RuntimeError("RADIUS_SHARED_SECRET must be at least 12 characters in production")
 
 
 @lru_cache

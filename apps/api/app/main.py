@@ -35,6 +35,8 @@ from .models import (
     PackageCreate,
     PackageRead,
     PackageUpdate,
+    PlatformConfiguration,
+    PlatformConfigurationUpdate,
     Role,
     Status,
     Router,
@@ -59,6 +61,7 @@ from .routeros import (
 )
 from .security import decrypt_secret, encrypt_secret
 from .uisp import test_connection as test_uisp_connection
+from .platform_config import ensure_platform_configuration
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -103,6 +106,7 @@ def visible(values):
 
 def bootstrap_db():
     create_db()
+    ensure_platform_configuration()
     with Session(engine) as session:
         if not session.exec(select(Package)).first():
             session.add_all(
@@ -189,6 +193,43 @@ def system_status(_: SuperAdminIdentity):
         "data_dir": str(Path(settings.data_dir).resolve()),
         "database_size_bytes": database_path.stat().st_size if database_path and database_path.exists() else 0,
         "backup_count": len(list((Path(settings.data_dir) / "backups").glob("*.db"))),
+    }
+
+
+@app.get("/api/system/configuration")
+def read_platform_configuration(_: SuperAdminIdentity, session: SessionDep):
+    record = session.get(PlatformConfiguration, 1)
+    return {
+        "app_secret_configured": bool(record and record.app_secret_ciphertext),
+        "radius_shared_secret_configured": bool(record and record.radius_shared_secret_ciphertext),
+        "uisp_base_url": record.uisp_base_url if record else "",
+        "uisp_api_token_configured": bool(record and record.uisp_api_token_ciphertext),
+    }
+
+
+@app.put("/api/system/configuration")
+def update_platform_configuration(
+    data: PlatformConfigurationUpdate, _: SuperAdminIdentity, session: SessionDep
+):
+    """Save local settings without ever returning their plaintext values."""
+    record = session.get(PlatformConfiguration, 1)
+    if not record:
+        ensure_platform_configuration()
+        record = session.get(PlatformConfiguration, 1)
+    if data.app_secret is not None and data.app_secret:
+        record.app_secret_ciphertext = encrypt_secret(data.app_secret)
+    if data.radius_shared_secret is not None and data.radius_shared_secret:
+        record.radius_shared_secret_ciphertext = encrypt_secret(data.radius_shared_secret)
+    if data.uisp_base_url is not None:
+        record.uisp_base_url = data.uisp_base_url.strip()
+    if data.uisp_api_token is not None:
+        record.uisp_api_token_ciphertext = encrypt_secret(data.uisp_api_token) if data.uisp_api_token else None
+    session.add(record)
+    session.commit()
+    sync_freeradius()
+    return {
+        "message": "Settings saved. Restart the container to reload the RADIUS service. Changing the application secret signs out existing sessions.",
+        "restart_required": True,
     }
 
 

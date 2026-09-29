@@ -1,9 +1,7 @@
 #!/bin/sh
 set -eu
 
-: "${APP_SECRET:?APP_SECRET must be set}"
 : "${BOOTSTRAP_SUPERADMIN_PASSWORD:?BOOTSTRAP_SUPERADMIN_PASSWORD must be set}"
-: "${RADIUS_SHARED_SECRET:?RADIUS_SHARED_SECRET must be set}"
 
 uvicorn app.main:app --host 0.0.0.0 --port 8080 &
 api_pid=$!

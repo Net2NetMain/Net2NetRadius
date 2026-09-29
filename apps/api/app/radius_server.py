@@ -14,6 +14,7 @@ from .database import engine
 from .models import AccountingSession, Package, Router, Status, Subscriber, now
 from .routeros import disconnect_subscriber
 from .security import decrypt_secret
+from .platform_config import radius_shared_secret
 
 log = logging.getLogger("net2net.radius")
 
@@ -199,7 +200,7 @@ class Net2NetRadius(server.Server):
 
 def run(host: str = "0.0.0.0", secret: str | None = None):
     settings = get_settings()
-    secret = secret or settings.radius_shared_secret
+    secret = secret or radius_shared_secret()
     radius = Net2NetRadius(
         dict=dictionary.Dictionary(str(Path(__file__).parents[1] / "radius" / "dictionary")),
         authport=1812,

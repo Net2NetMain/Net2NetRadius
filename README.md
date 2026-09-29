@@ -22,7 +22,7 @@ Ports:
 - `1812/udp` — RADIUS authentication
 - `1813/udp` — RADIUS accounting
 
-Before starting a production container, set unique values for `APP_SECRET` (32+ characters), `BOOTSTRAP_SUPERADMIN_PASSWORD`, `BOOTSTRAP_WISPADMIN_PASSWORD`, and `RADIUS_SHARED_SECRET`. The initial administrator passwords are used only if the database is empty. Include the mapped `/data` directory in the Unraid backup schedule.
+Before the first start, set the initial Super Admin and WISP Admin passwords. Those are used only when the database is empty. After signing in, set the Application secret, RADIUS shared secret and UISP API settings under **Settings → Local platform secrets**. Include the mapped `/data` directory in the Unraid backup schedule.
 
 For a local Docker test:
 
@@ -34,7 +34,7 @@ docker compose up --build
 
 Open `http://SERVER-IP:8080`. The manual Unraid import template is [unraid/net2net-local-radius.xml](unraid/net2net-local-radius.xml). It is intentionally a beta template until an image registry and final public repository URL are selected.
 
-The Super Admin can create and download consistent SQLite backups from **Settings → Backup and move**. The container retains the latest 14 backups by default. For a complete server migration, stop the old container, copy its mapped `/data` appdata folder, and deploy the new container with the same `APP_SECRET` and `RADIUS_SHARED_SECRET`; the database contains encrypted router credentials and requires the original application secret to read them.
+The Super Admin can create and download consistent SQLite backups from **Settings → Backup and move**. The backup includes local platform settings. The container retains the latest 14 backups by default. For a complete server migration, stop the old container, copy its mapped `/data` appdata folder, deploy the new container, restore the backup from the web interface, and point MikroTiks to the new RADIUS address.
 
 ## Run the development build
 

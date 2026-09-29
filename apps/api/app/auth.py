@@ -8,6 +8,7 @@ import time
 from fastapi import Cookie, HTTPException
 
 from .config import get_settings
+from .platform_config import application_secret
 
 COOKIE_NAME = "net2net_session"
 SESSION_SECONDS = 12 * 60 * 60
@@ -33,14 +34,14 @@ def verify_password(password: str, encoded: str) -> bool:
 def create_token(subject: str, role: str, display_name: str) -> str:
     payload = {"sub": subject, "role": role, "name": display_name, "exp": int(time.time()) + SESSION_SECONDS}
     body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode().rstrip("=")
-    signature = hmac.new(get_settings().app_secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(application_secret().encode(), body.encode(), hashlib.sha256).hexdigest()
     return f"{body}.{signature}"
 
 
 def read_token(token: str) -> dict:
     try:
         body, signature = token.rsplit(".", 1)
-        expected = hmac.new(get_settings().app_secret.encode(), body.encode(), hashlib.sha256).hexdigest()
+        expected = hmac.new(application_secret().encode(), body.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(signature, expected):
             raise ValueError
         payload = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
