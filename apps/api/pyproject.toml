@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "net2net-radius-api"
-version = "0.1.0"
+version = "1.0.1"
 description = "API for Net2Net Local RADIUS Manager"
 requires-python = ">=3.12"
 dependencies = [
