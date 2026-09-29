@@ -202,9 +202,13 @@ def create_backup(_: SuperAdminIdentity):
     source = sqlite_database_path()
     if not source or not source.exists():
         raise HTTPException(501, "In-app backup is currently available for SQLite deployments only")
+    return _create_sqlite_backup(source)
+
+
+def _create_sqlite_backup(source: Path, prefix: str = "net2net") -> dict[str, int | str]:
     backup_dir = Path(settings.data_dir) / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
-    target = backup_dir / f"net2net-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.db"
+    target = backup_dir / f"{prefix}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.db"
     with sqlite3.connect(source) as source_db, sqlite3.connect(target) as target_db:
         source_db.backup(target_db)
     backups = sorted(backup_dir.glob("*.db"), key=lambda file: file.stat().st_mtime, reverse=True)
@@ -221,6 +225,49 @@ def download_backup(filename: str, _: SuperAdminIdentity):
     if not backup.exists():
         raise HTTPException(404, "Backup not found")
     return FileResponse(backup, filename=filename, media_type="application/octet-stream")
+
+
+@app.post("/api/system/restore")
+async def restore_backup(request: Request, _: SuperAdminIdentity):
+    """Validate and replace the local SQLite database from a downloaded backup.
+
+    The current database is backed up first.  RADIUS is re-synchronised, but
+    the container must be restarted before FreeRADIUS loads the new records.
+    """
+    source = sqlite_database_path()
+    if not source or not source.exists():
+        raise HTTPException(501, "In-app restore is currently available for SQLite deployments only")
+    if request.headers.get("X-Net2Net-Restore-Confirm") != "RESTORE":
+        raise HTTPException(400, "Type RESTORE to confirm replacement of the current database")
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 256 * 1024 * 1024:
+        raise HTTPException(413, "Backup file is larger than the 256 MB restore limit")
+    uploaded = await request.body()
+    if len(uploaded) < 1024:
+        raise HTTPException(400, "The selected file is not a usable Net2Net backup")
+
+    backup_dir = Path(settings.data_dir) / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    candidate = backup_dir / f"restore-upload-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.db"
+    candidate.write_bytes(uploaded)
+    try:
+        with sqlite3.connect(candidate) as database:
+            integrity = database.execute("PRAGMA integrity_check").fetchone()
+            tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        expected = {"appuser", "package", "subscriber", "router", "ippool"}
+        if not integrity or integrity[0] != "ok" or not expected.issubset(tables):
+            raise HTTPException(400, "This file is not a valid Net2Net backup")
+
+        safety_backup = _create_sqlite_backup(source, prefix="before-restore")
+        engine.dispose()
+        os.replace(candidate, source)
+        sync_freeradius()
+        return {
+            "message": "Backup restored. Restart the container now to reload RADIUS safely.",
+            "safety_backup": safety_backup["filename"],
+        }
+    finally:
+        candidate.unlink(missing_ok=True)
 
 
 @app.post("/api/auth/login")
