@@ -16,7 +16,7 @@
     Exposes the web portal on 8080 and RADIUS authentication/accounting on UDP 1812/1813.
   </Overview>
   <WebUI>http://[IP]:[PORT:8080]</WebUI>
-  <Icon>https://raw.githubusercontent.com/Net2NetMain/Net2NetRadius/main/apps/web/public/favicon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/Net2NetMain/Net2NetUniFiRadius/main/assets/net2net-container-icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
   <CPUset/>
