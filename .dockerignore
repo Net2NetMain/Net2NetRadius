@@ -10,3 +10,15 @@ __pycache__
 .env
 ANDROID APP
 unifi-radius
+**/.env
+**/.env.*
+**/runtime.env
+**/signing.properties
+**/local.properties
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.key
+**/*.jks
+**/*.keystore
+**/backups

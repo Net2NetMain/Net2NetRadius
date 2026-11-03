@@ -26,3 +26,6 @@ radius_entries_review*.csv
 /ANDROID APP/*.jks
 /ANDROID APP/*.keystore
 /ANDROID APP/signing.properties
+*.jks
+*.keystore
+runtime.env
