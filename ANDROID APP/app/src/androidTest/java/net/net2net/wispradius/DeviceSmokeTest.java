@@ -16,13 +16,18 @@ public class DeviceSmokeTest extends Instrumentation {
 
   private void capture(String name) throws Exception {
     final android.graphics.Bitmap[] rendered = new android.graphics.Bitmap[1];
-    runOnMainSync(() -> {
-      View view=activity.getWindow().getDecorView();
-      rendered[0]=android.graphics.Bitmap.createBitmap(view.getWidth(),view.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
-      view.draw(new android.graphics.Canvas(rendered[0]));
-    });
+    runOnMainSync(
+        () -> {
+          View view = activity.getWindow().getDecorView();
+          rendered[0] =
+              android.graphics.Bitmap.createBitmap(
+                  view.getWidth(), view.getHeight(), android.graphics.Bitmap.Config.ARGB_8888);
+          view.draw(new android.graphics.Canvas(rendered[0]));
+        });
     android.graphics.Bitmap bitmap = rendered[0];
-    try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(getTargetContext().getExternalFilesDir(null), name + ".png"))) {
+    try (java.io.FileOutputStream out =
+        new java.io.FileOutputStream(
+            new java.io.File(getTargetContext().getExternalFilesDir(null), name + ".png"))) {
       bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
     }
     bitmap.recycle();
@@ -75,6 +80,38 @@ public class DeviceSmokeTest extends Instrumentation {
     waitForIdleSync();
   }
 
+  private void openRecord(String title) {
+    runOnMainSync(
+        () -> {
+          for (View view : all(activity.getWindow().getDecorView())) {
+            if (view instanceof TextView
+                && !(view instanceof EditText)
+                && ((TextView) view).getText().toString().equals(title)) {
+              View target = view;
+              while (!target.isClickable() && target.getParent() instanceof View)
+                target = (View) target.getParent();
+              if (target.isClickable()) {
+                target.performClick();
+                return;
+              }
+            }
+          }
+          throw new AssertionError("Missing compact row " + title);
+        });
+    waitForIdleSync();
+  }
+
+  private void assertNoListActions() {
+    runOnMainSync(
+        () -> {
+          for (View view : all(activity.getWindow().getDecorView()))
+            if (view instanceof Button
+                && java.util.Set.of("Edit", "Reconnect", "Disable", "Delete")
+                    .contains(((Button) view).getText().toString()))
+              throw new AssertionError("Record actions must be inside details");
+        });
+  }
+
   private void await(String text) throws Exception {
     long until = System.currentTimeMillis() + 30000;
     while (System.currentTimeMillis() < until) {
@@ -92,7 +129,8 @@ public class DeviceSmokeTest extends Instrumentation {
     runOnMainSync(
         () -> {
           for (View v : all(activity.getWindow().getDecorView()))
-            if (v instanceof TextView && !(v instanceof EditText)) visible.append(((TextView) v).getText()).append(" | ");
+            if (v instanceof TextView && !(v instanceof EditText))
+              visible.append(((TextView) v).getText()).append(" | ");
         });
     throw new AssertionError("Timed out waiting for " + text + "; visible: " + visible);
   }
@@ -126,15 +164,23 @@ public class DeviceSmokeTest extends Instrumentation {
       await("Sign in to your WISP");
       if (arguments.getString("mode", "").equals("read-only")) {
         login(arguments.getString("username"), arguments.getString("password"));
-        click("Subscribers"); await("Updated ");
-        click("Packages"); await("Updated ");
-        click("Routers"); await("Updated ");
-        click("IP pools"); await("Updated ");
-        click("Settings"); await("Updated ");
-        click("Overview"); await("Updated ");
-        keepLogin=arguments.getString("keepLogin", "false").equals("true");
-        result.putString("stream", "PASS: HTTPS native administrator login and read-only production screens\n");
-        finish(Activity.RESULT_OK,result); return;
+        click("Subscribers");
+        await("Updated ");
+        click("Packages");
+        await("Updated ");
+        click("Routers");
+        await("Updated ");
+        click("IP pools");
+        await("Updated ");
+        click("Settings");
+        await("Updated ");
+        click(arguments.getString("finalSection", "Overview"));
+        await("Updated ");
+        keepLogin = arguments.getString("keepLogin", "false").equals("true");
+        result.putString(
+            "stream", "PASS: HTTPS native administrator login and read-only production screens\n");
+        finish(Activity.RESULT_OK, result);
+        return;
       }
       login("phone-customer", "Phone-test-2026!");
       await("phone-customer");
@@ -142,7 +188,7 @@ public class DeviceSmokeTest extends Instrumentation {
       click("Usage");
       await("Recorded usage");
       click("History");
-      await("Connection history");
+      await("Disconnected:");
       runOnMainSync(() -> activity.finish());
       activity =
           startActivitySync(
@@ -175,6 +221,17 @@ public class DeviceSmokeTest extends Instrumentation {
       await("phone-created");
       runOnMainSync(() -> edits().get(0).setText("phone-created"));
       click("Search");
+      assertNoListActions();
+      openRecord("phone-created");
+      await("Edit");
+      click("‹ Back to Subscribers");
+      assertNoListActions();
+      runOnMainSync(
+          () -> {
+            if (!edits().get(0).getText().toString().equals("phone-created"))
+              throw new AssertionError("Search must survive returning from details");
+          });
+      openRecord("phone-created");
       click("Disable");
       confirm();
       await("Status: disabled");
@@ -197,6 +254,30 @@ public class DeviceSmokeTest extends Instrumentation {
           });
       confirm();
       await("No records");
+      click("Packages");
+      await("Updated ");
+      assertNoListActions();
+      openRecord("5/5 Mbps");
+      await("Edit");
+      runOnMainSync(() -> activity.onBackPressed());
+      await("+ Add packages");
+      assertNoListActions();
+      click("IP pools");
+      await("Updated ");
+      assertNoListActions();
+      openRecord("Local subscribers");
+      await("Edit");
+      click("‹ Back to IP pools");
+      assertNoListActions();
+      for (String area : new String[] {"Live", "Routers", "Sessions", "Speed tests"}) {
+        click(area);
+        await("Updated ");
+        assertNoListActions();
+        openRecord(area.equals("Routers") ? "Phone test router" : "phone-customer");
+        await("‹ Back to " + area);
+        click("‹ Back to " + area);
+        assertNoListActions();
+      }
       click("Settings");
       await("Updated ");
       click("Edit platform secrets");
@@ -211,7 +292,8 @@ public class DeviceSmokeTest extends Instrumentation {
           });
       result.putString(
           "stream",
-          "PASS: customer statistics/history, saved login, Keystore encryption; admin"
+          "PASS: compact list/detail/back navigation across all admin sections; customer"
+              + " statistics/history, saved login, Keystore encryption; admin"
               + " create/disable/enable/delete, exact Delete confirmation, platform settings"
               + " form\n");
       finish(Activity.RESULT_OK, result);
@@ -220,7 +302,7 @@ public class DeviceSmokeTest extends Instrumentation {
       finish(Activity.RESULT_CANCELED, result);
     } finally {
       if (activity != null) runOnMainSync(() -> activity.finish());
-      if(!keepLogin)vault.save(original);
+      if (!keepLogin) vault.save(original);
     }
   }
 }

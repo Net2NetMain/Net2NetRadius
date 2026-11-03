@@ -44,6 +44,10 @@ packages, routers, pools, branding, UISP checks, admin account creation, local s
 backups/download/restore, and User Manager imports. Reconnect and disable require a
 confirmation. Subscriber deletion requires exactly `Delete`, checked by both app and
 server. Restore separately requires `RESTORE`. Files use Android's document picker.
+Subscribers, live connections, packages, routers, IP pools, sessions and speed tests
+first show compact searchable rows. Tap a row to see full details and its actions.
+Back returns to the same search and list position; automatic refresh pauses while
+typing an unapplied search.
 WISP logos display using Android's bitmap loader or AndroidSVG for SVG logos.
 
 ## API 1.1.0

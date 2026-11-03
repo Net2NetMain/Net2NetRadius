@@ -27,6 +27,10 @@ public class MainActivity extends Activity {
   private JSONObject saved, identity, cache;
   private Api api;
   private LinearLayout root, content, navigation;
+  private ScrollView pageScroll;
+  private String selectedRecordKey;
+  private int listScrollPosition;
+  private boolean searchEditing;
   private TextView status, brand;
   private String section = "Overview", query = "";
   private boolean busy, active, offline;
@@ -40,7 +44,7 @@ public class MainActivity extends Activity {
       new Runnable() {
         @Override
         public void run() {
-          if (active && identity != null && !busy && editor == null) refresh();
+          if (active && identity != null && !busy && editor == null && !searchEditing) refresh();
           timer.postDelayed(this, 15000);
         }
       };
@@ -60,6 +64,19 @@ public class MainActivity extends Activity {
     cache = saved.optJSONObject("cache");
     if (cache == null) cache = new JSONObject();
     identity = saved.optJSONObject("identity");
+    if (state != null) {
+      selectedRecordKey = state.getString("selectedRecord");
+      query = state.getString("query", "");
+      listScrollPosition = state.getInt("listScrollPosition");
+    }
+    if (Build.VERSION.SDK_INT >= 33)
+      getOnBackInvokedDispatcher()
+          .registerOnBackInvokedCallback(
+              android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+              () -> {
+                if (selectedRecordKey != null) backToList();
+                else finish();
+              });
     if (identity != null) {
       api = new Api(saved.optString("server"));
       section = saved.optString("section", "Overview");
@@ -68,6 +85,14 @@ public class MainActivity extends Activity {
       render();
       refresh();
     } else loginScreen("");
+  }
+
+  @Override
+  protected void onSaveInstanceState(Bundle state) {
+    super.onSaveInstanceState(state);
+    state.putString("selectedRecord", selectedRecordKey);
+    state.putString("query", query);
+    state.putInt("listScrollPosition", listScrollPosition);
   }
 
   @Override
@@ -359,6 +384,7 @@ public class MainActivity extends Activity {
     status = text("Connecting…", 12, muted);
     root.addView(status);
     ScrollView scroll = new ScrollView(this);
+    pageScroll = scroll;
     content = column();
     scroll.addView(content);
     root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -393,6 +419,10 @@ public class MainActivity extends Activity {
               () -> {
                 section = name;
                 query = "";
+                selectedRecordKey = null;
+                searchEditing = false;
+                listScrollPosition = 0;
+                if (pageScroll != null) pageScroll.scrollTo(0, 0);
                 persist();
                 render();
                 refresh();
@@ -595,7 +625,7 @@ public class MainActivity extends Activity {
           }
           offline = false;
           persist();
-          render();
+          if (!searchEditing) render();
           if (!requested.equals(section)) refresh();
           if (object("branding").optBoolean("has_logo")) loadBrandLogo();
         });
@@ -635,6 +665,7 @@ public class MainActivity extends Activity {
 
   private void render() {
     if (identity == null || content == null) return;
+    int scrollPosition = pageScroll == null ? 0 : pageScroll.getScrollY();
     content.removeAllViews();
     String company = object("branding").optString("company_name", "WISP Radius");
     brand.setText(company);
@@ -670,6 +701,7 @@ public class MainActivity extends Activity {
       else if (section.equals("Settings")) settingsScreen();
       else listScreen();
     } else customerScreen();
+    if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, scrollPosition));
   }
 
   private void metric(LinearLayout box, String label, String value) {
@@ -897,21 +929,156 @@ public class MainActivity extends Activity {
             .addView(text(attention.optJSONObject(i).optString("message"), 15, ink));
   }
 
+  private String recordTitle(JSONObject row) {
+    return row.optString("username", row.optString("name", "Record " + row.optString("id")));
+  }
+
+  private String recordKey(JSONObject row) {
+    return row.has("id")
+        ? row.optString("id")
+        : row.optString("username") + ":" + row.optString("acct_session_id");
+  }
+
+  private String packageName(int id) {
+    JSONArray packages = array("/api/packages");
+    for (int i = 0; i < packages.length(); i++) {
+      JSONObject item = packages.optJSONObject(i);
+      if (item != null && item.optInt("id") == id) return item.optString("name");
+    }
+    return "Package " + id;
+  }
+
+  private String shortTime(String raw) {
+    if (raw == null || raw.isEmpty() || raw.equals("null")) return "Time unavailable";
+    try {
+      java.time.Instant instant;
+      try {
+        instant = java.time.OffsetDateTime.parse(raw).toInstant();
+      } catch (java.time.format.DateTimeParseException ignored) {
+        instant = java.time.LocalDateTime.parse(raw).toInstant(java.time.ZoneOffset.UTC);
+      }
+      return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+          .format(Date.from(instant));
+    } catch (Exception ignored) {
+      return raw;
+    }
+  }
+
+  private String recordSummary(JSONObject row) {
+    return switch (section) {
+      case "Subscribers" ->
+          pretty(row.optString("status")) + " · " + packageName(row.optInt("package_id"));
+      case "Live" ->
+          String.format(
+              Locale.ENGLISH,
+              "↓ %.2f Mbps   ↑ %.2f Mbps",
+              row.optDouble("download_bps", 0) / 1_000_000,
+              row.optDouble("upload_bps", 0) / 1_000_000);
+      case "Packages" ->
+          "↓ "
+              + row.optString("advertised_down_mbps")
+              + " / ↑ "
+              + row.optString("advertised_up_mbps")
+              + " Mbps";
+      case "Routers" ->
+          row.optString("host")
+              + " · "
+              + (!row.optBoolean("enabled", true)
+                  ? "Disabled"
+                  : row.optBoolean("reachable") ? "Online" : "Unreachable");
+      case "IP pools" ->
+          pretty(row.optString("kind"))
+              + " · "
+              + row.optString("used", "0")
+              + " / "
+              + row.optString("total", "—")
+              + " used";
+      case "Sessions" ->
+          (row.isNull("stopped_at") ? "Active" : "Ended")
+              + " · "
+              + shortTime(row.optString("started_at"));
+      case "Speed tests" ->
+          shortTime(row.optString("tested_at"))
+              + " · ↓ "
+              + row.optString("download_mbps")
+              + " Mbps";
+      default -> "View details";
+    };
+  }
+
+  private void backToList() {
+    selectedRecordKey = null;
+    render();
+    if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, listScrollPosition));
+  }
+
+  @Override
+  public void onBackPressed() {
+    if (selectedRecordKey != null) {
+      backToList();
+      return;
+    }
+    super.onBackPressed();
+  }
+
   private void listScreen() {
     String path = pathForSection(section);
+    JSONArray rows = array(path);
+    if (selectedRecordKey != null) {
+      for (int i = 0; i < rows.length(); i++) {
+        JSONObject row = rows.optJSONObject(i);
+        if (row != null && selectedRecordKey.equals(recordKey(row))) {
+          content.addView(button("‹ Back to " + section, this::backToList));
+          recordDetails(row, path);
+          return;
+        }
+      }
+      selectedRecordKey = null;
+    }
     LinearLayout tools = card("");
-    EditText search = input(tools, "Search " + section.toLowerCase(Locale.ENGLISH), query, false);
-    tools.addView(
-        button(
-            "Search",
-            () -> {
-              query = search.getText().toString().trim();
-              render();
-            }));
+    LinearLayout searchRow = new LinearLayout(this);
+    searchRow.setGravity(Gravity.BOTTOM);
+    LinearLayout searchFields = column();
+    searchRow.addView(searchFields, new LinearLayout.LayoutParams(0, -2, 1));
+    EditText search =
+        input(searchFields, "Find in " + section.toLowerCase(Locale.ENGLISH), query, false);
+    Runnable applySearch =
+        () -> {
+          query = search.getText().toString().trim();
+          searchEditing = false;
+          listScrollPosition = 0;
+          if (pageScroll != null) pageScroll.scrollTo(0, 0);
+          render();
+        };
+    Button find = button("Search", applySearch);
+    search.addTextChangedListener(
+        new android.text.TextWatcher() {
+          public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+
+          public void onTextChanged(CharSequence text, int start, int before, int count) {
+            searchEditing = !text.toString().trim().equals(query);
+          }
+
+          public void afterTextChanged(android.text.Editable text) {}
+        });
+    LinearLayout.LayoutParams findLayout = new LinearLayout.LayoutParams(-2, dp(52));
+    findLayout.setMargins(dp(10), 0, 0, dp(12));
+    searchRow.addView(find, findLayout);
+    tools.addView(searchRow);
+    search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+    search.setOnEditorActionListener(
+        (v, action, event) -> {
+          if (action == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+            ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE))
+                .hideSoftInputFromWindow(search.getWindowToken(), 0);
+            applySearch.run();
+            return true;
+          }
+          return false;
+        });
     if (Set.of("Subscribers", "Packages", "Routers", "IP pools").contains(section))
       tools.addView(
           button("+ Add " + section.toLowerCase(Locale.ENGLISH), () -> form(section, null)));
-    JSONArray rows = array(path);
     int found = 0;
     for (int i = 0; i < rows.length(); i++) {
       JSONObject row = rows.optJSONObject(i);
@@ -921,127 +1088,165 @@ public class MainActivity extends Activity {
                   .toLowerCase(Locale.ENGLISH)
                   .contains(query.toLowerCase(Locale.ENGLISH)))) continue;
       found++;
-      String title =
-          row.optString("username", row.optString("name", "Record " + row.optString("id")));
-      LinearLayout box = card(title);
-      for (Iterator<String> keys = row.keys(); keys.hasNext(); ) {
-        String key = keys.next();
-        if (key.contains("password")
-            || key.equals("raw_data")
-            || key.equals("id")
-            || key.equals("username")
-            || key.equals("name")) continue;
-        Object value = row.opt(key);
-        if (value != null && value != JSONObject.NULL)
-          box.addView(text(pretty(key) + ": " + value, 14, muted));
-      }
-      String current = section;
-      if (Set.of("Subscribers", "Packages", "Routers", "IP pools").contains(current))
-        box.addView(button("Edit", () -> form(current, row)));
-      if (current.equals("Subscribers")) {
-        box.addView(
-            button(
-                "Reconnect",
-                () ->
-                    confirm(
-                        "Reconnect " + title + "?",
-                        "The active session will disconnect so the router can reconnect it.",
-                        null,
-                        () ->
-                            mutate(
-                                "POST",
-                                "/api/mobile/subscribers/" + row.optInt("id") + "/reconnect",
-                                null))));
-        String next = row.optString("status").equals("disabled") ? "active" : "disabled";
-        box.addView(
-            button(
-                next.equals("active") ? "Enable" : "Disable",
-                () ->
-                    confirm(
-                        pretty(next) + " account?",
-                        title,
-                        null,
-                        () ->
-                            mutate(
-                                "PATCH",
-                                path + "/" + row.optInt("id") + "/status",
-                                json("status", next)))));
-        box.addView(
-            button(
-                "Delete",
-                () ->
-                    confirm(
-                        "Delete " + title + "?",
-                        "This removes the PPPoE account. Connection history remains.",
-                        "Delete",
-                        () ->
-                            mutate(
-                                "DELETE",
-                                path + "/" + row.optInt("id"),
-                                json("confirmation", "Delete")))));
-      }
-      if (current.equals("Packages"))
-        box.addView(
-            button(
-                "Delete",
-                () ->
-                    confirm(
-                        "Delete package?",
-                        title,
-                        "Delete",
-                        () -> mutate("DELETE", path + "/" + row.optInt("id"), null))));
-      if (current.equals("Routers")) {
-        box.addView(
-            button(
-                "Test connection",
-                () -> mutate("POST", path + "/" + row.optInt("id") + "/test", null)));
-        box.addView(
-            button(
-                "Enable single session per host",
-                () ->
-                    confirm(
-                        "Apply single-session guard?",
-                        "Updates PPPoE servers on this router.",
-                        null,
-                        () ->
-                            mutate(
-                                "POST",
-                                path + "/" + row.optInt("id") + "/pppoe-single-session",
-                                null))));
-      }
-      if (current.equals("Live"))
-        box.addView(
-            button(
-                "Reconnect",
-                () ->
-                    confirm(
-                        "Reconnect " + title + "?",
-                        "The router will reconnect this session.",
-                        null,
-                        () ->
-                            mutate(
-                                "POST",
-                                path
-                                    + "/"
-                                    + row.optInt("router_id")
-                                    + "/"
-                                    + Uri.encode(row.optString("username"))
-                                    + "/disconnect",
-                                null))));
-      if (current.equals("Sessions") && row.isNull("stopped_at"))
-        box.addView(
-            button(
-                "Reconnect",
-                () ->
-                    confirm(
-                        "Reconnect session?",
-                        title,
-                        null,
-                        () ->
-                            mutate("POST", path + "/" + row.optInt("id") + "/disconnect", null))));
+      LinearLayout item = card("");
+      LinearLayout line = new LinearLayout(this);
+      line.setGravity(Gravity.CENTER_VERTICAL);
+      LinearLayout labels = column();
+      TextView name = text(recordTitle(row), 17, ink);
+      name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+      name.setSingleLine(true);
+      name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+      labels.addView(name);
+      TextView summary = text(recordSummary(row), 13, muted);
+      summary.setSingleLine(true);
+      summary.setEllipsize(android.text.TextUtils.TruncateAt.END);
+      labels.addView(summary);
+      line.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+      TextView arrow = text("›", 26, accent);
+      arrow.setGravity(Gravity.CENTER);
+      line.addView(arrow, new LinearLayout.LayoutParams(dp(28), -2));
+      item.addView(line);
+      GradientDrawable panel = shape(surface);
+      panel.setStroke(dp(1), border);
+      item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x2280CBC4), panel, null));
+      item.setFocusable(true);
+      item.setContentDescription(recordTitle(row) + ", " + recordSummary(row) + ". Open details");
+      item.setOnClickListener(
+          v -> {
+            listScrollPosition = pageScroll == null ? 0 : pageScroll.getScrollY();
+            selectedRecordKey = recordKey(row);
+            searchEditing = false;
+            render();
+            if (pageScroll != null) pageScroll.post(() -> pageScroll.scrollTo(0, 0));
+          });
     }
     if (found == 0)
       card("No records").addView(text("No matching records in the last loaded data.", 15, muted));
+    else
+      content.addView(
+          text(
+              found + " " + (found == 1 ? "result" : "results") + " · Tap an item for details",
+              12,
+              muted));
+  }
+
+  private void recordDetails(JSONObject row, String path) {
+    String title = recordTitle(row);
+    LinearLayout box = card(title);
+    for (Iterator<String> keys = row.keys(); keys.hasNext(); ) {
+      String key = keys.next();
+      if (key.contains("password")
+          || key.equals("raw_data")
+          || key.equals("id")
+          || key.equals("username")
+          || key.equals("name")) continue;
+      Object value = row.opt(key);
+      if (value != null && value != JSONObject.NULL)
+        box.addView(text(pretty(key) + ": " + value, 14, muted));
+    }
+    String current = section;
+    if (Set.of("Subscribers", "Packages", "Routers", "IP pools").contains(current))
+      box.addView(button("Edit", () -> form(current, row)));
+    if (current.equals("Subscribers")) {
+      box.addView(
+          button(
+              "Reconnect",
+              () ->
+                  confirm(
+                      "Reconnect " + title + "?",
+                      "The active session will disconnect so the router can reconnect it.",
+                      null,
+                      () ->
+                          mutate(
+                              "POST",
+                              "/api/mobile/subscribers/" + row.optInt("id") + "/reconnect",
+                              null))));
+      String next = row.optString("status").equals("disabled") ? "active" : "disabled";
+      box.addView(
+          button(
+              next.equals("active") ? "Enable" : "Disable",
+              () ->
+                  confirm(
+                      pretty(next) + " account?",
+                      title,
+                      null,
+                      () ->
+                          mutate(
+                              "PATCH",
+                              path + "/" + row.optInt("id") + "/status",
+                              json("status", next)))));
+      box.addView(
+          button(
+              "Delete",
+              () ->
+                  confirm(
+                      "Delete " + title + "?",
+                      "This removes the PPPoE account. Connection history remains.",
+                      "Delete",
+                      () ->
+                          mutate(
+                              "DELETE",
+                              path + "/" + row.optInt("id"),
+                              json("confirmation", "Delete")))));
+    }
+    if (current.equals("Packages"))
+      box.addView(
+          button(
+              "Delete",
+              () ->
+                  confirm(
+                      "Delete package?",
+                      title,
+                      "Delete",
+                      () -> mutate("DELETE", path + "/" + row.optInt("id"), null))));
+    if (current.equals("Routers")) {
+      box.addView(
+          button(
+              "Test connection",
+              () -> mutate("POST", path + "/" + row.optInt("id") + "/test", null)));
+      box.addView(
+          button(
+              "Enable single session per host",
+              () ->
+                  confirm(
+                      "Apply single-session guard?",
+                      "Updates PPPoE servers on this router.",
+                      null,
+                      () ->
+                          mutate(
+                              "POST",
+                              path + "/" + row.optInt("id") + "/pppoe-single-session",
+                              null))));
+    }
+    if (current.equals("Live"))
+      box.addView(
+          button(
+              "Reconnect",
+              () ->
+                  confirm(
+                      "Reconnect " + title + "?",
+                      "The router will reconnect this session.",
+                      null,
+                      () ->
+                          mutate(
+                              "POST",
+                              path
+                                  + "/"
+                                  + row.optInt("router_id")
+                                  + "/"
+                                  + Uri.encode(row.optString("username"))
+                                  + "/disconnect",
+                              null))));
+    if (current.equals("Sessions") && row.isNull("stopped_at"))
+      box.addView(
+          button(
+              "Reconnect",
+              () ->
+                  confirm(
+                      "Reconnect session?",
+                      title,
+                      null,
+                      () -> mutate("POST", path + "/" + row.optInt("id") + "/disconnect", null))));
   }
 
   private JSONObject json(String key, Object value) {
