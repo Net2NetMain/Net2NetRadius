@@ -51,5 +51,6 @@ jobs:
             sleep 2
           done
           docker exec radius-test freeradius -XC
+          docker exec -i radius-test python - < scripts/container-accounting-smoke.py
           docker exec radius-test python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/openapi.json')"
           docker logs radius-test
