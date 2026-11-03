@@ -2,9 +2,12 @@ package net.net2net.wispradius;
 
 import android.app.*;
 import android.content.*;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.*;
 import android.text.InputType;
@@ -27,7 +30,8 @@ public class MainActivity extends Activity {
   private TextView status, brand;
   private String section = "Overview", query = "";
   private boolean busy, active, offline;
-  private int ink, muted, background, surface, accent = Color.rgb(51, 126, 170);
+  private int ink, muted, background, surface, border, soft, accent;
+  private boolean dark;
   private Dialog editor;
   private byte[] download;
   private String downloadName;
@@ -43,7 +47,7 @@ public class MainActivity extends Activity {
 
   @Override
   public void onCreate(Bundle state) {
-    boolean dark =
+    dark =
         (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
             == Configuration.UI_MODE_NIGHT_YES;
     setTheme(
@@ -105,13 +109,16 @@ public class MainActivity extends Activity {
   }
 
   private void colors() {
-    boolean dark =
+    dark =
         (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
             == Configuration.UI_MODE_NIGHT_YES;
-    background = Color.parseColor(dark ? "#101A25" : "#F1F5F9");
-    surface = Color.parseColor(dark ? "#1B2939" : "#FFFFFF");
-    ink = Color.parseColor(dark ? "#EDF5FC" : "#172C43");
-    muted = Color.parseColor(dark ? "#A7B9C9" : "#586E80");
+    background = Color.parseColor(dark ? "#0C1422" : "#F2F6FA");
+    surface = Color.parseColor(dark ? "#172438" : "#FFFFFF");
+    ink = Color.parseColor(dark ? "#F2F7FF" : "#192A42");
+    muted = Color.parseColor(dark ? "#A5B8CE" : "#60738A");
+    border = Color.parseColor(dark ? "#273950" : "#E0E8F0");
+    soft = Color.parseColor(dark ? "#22374C" : "#E8F2F6");
+    accent = Color.parseColor(dark ? "#79D6D0" : "#096F77");
     getWindow().setStatusBarColor(background);
     getWindow().setNavigationBarColor(background);
     getWindow()
@@ -137,18 +144,25 @@ public class MainActivity extends Activity {
   private GradientDrawable shape(int color) {
     GradientDrawable d = new GradientDrawable();
     d.setColor(color);
-    d.setCornerRadius(dp(18));
+    d.setCornerRadius(dp(26));
     return d;
   }
 
   private LinearLayout card(String title) {
     LinearLayout box = column();
-    box.setPadding(dp(18), dp(12), dp(18), dp(16));
-    box.setBackground(shape(surface));
+    box.setPadding(dp(20), dp(18), dp(20), dp(20));
+    GradientDrawable panel = shape(surface);
+    panel.setStroke(dp(1), border);
+    box.setBackground(panel);
+    box.setElevation(dp(dark ? 0 : 2));
     LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-    params.setMargins(0, 0, 0, dp(12));
+    params.setMargins(0, 0, 0, dp(16));
     content.addView(box, params);
-    if (!title.isEmpty()) box.addView(text(title, 19, ink));
+    if (!title.isEmpty()) {
+      TextView heading = text(title, 19, ink);
+      heading.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+      box.addView(heading);
+    }
     return box;
   }
 
@@ -157,7 +171,30 @@ public class MainActivity extends Activity {
     b.setText(label);
     b.setTextColor(accent);
     b.setAllCaps(false);
+    b.setTextSize(14);
+    b.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+    b.setBackgroundTintList(null);
+    b.setBackground(
+        new RippleDrawable(
+            ColorStateList.valueOf(dark ? 0x3379D6D0 : 0x22096F77), shape(soft), null));
+    if (label.equals("Sign in") || label.startsWith("+ Add")) {
+      b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), shape(accent), null));
+      b.setTextColor(dark ? background : Color.WHITE);
+    } else if (label.equals("Delete") || label.equals("Disable")) {
+      b.setBackground(
+          new RippleDrawable(
+              ColorStateList.valueOf(0x22F08DA2),
+              shape(Color.parseColor(dark ? "#3B2535" : "#FFF0F2")),
+              null));
+      b.setTextColor(Color.parseColor(dark ? "#FFB3BF" : "#AD2440"));
+    }
+    b.setPadding(dp(20), dp(10), dp(20), dp(10));
+    b.setStateListAnimator(null);
+    b.setMinimumWidth(0);
     b.setMinHeight(dp(48));
+    LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, -2);
+    layout.setMargins(0, dp(6), 0, dp(6));
+    b.setLayoutParams(layout);
     b.setOnClickListener(v -> action.run());
     return b;
   }
@@ -169,13 +206,27 @@ public class MainActivity extends Activity {
     edit.setTextColor(ink);
     edit.setHintTextColor(muted);
     edit.setSingleLine(true);
-    edit.setPadding(dp(10), dp(8), dp(10), dp(8));
+    edit.setPadding(dp(16), dp(12), dp(16), dp(12));
+    edit.setTextSize(16);
+    StateListDrawable fieldBackground = new StateListDrawable();
+    GradientDrawable focused = shape(soft);
+    focused.setCornerRadius(dp(18));
+    focused.setStroke(dp(2), accent);
+    GradientDrawable normal = shape(dark ? background : Color.parseColor("#F7FAFC"));
+    normal.setCornerRadius(dp(18));
+    normal.setStroke(dp(1), border);
+    fieldBackground.addState(new int[] {android.R.attr.state_focused}, focused);
+    fieldBackground.addState(new int[] {}, normal);
+    edit.setBackgroundTintList(null);
+    edit.setBackground(fieldBackground);
     edit.setInputType(
         secret
             ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD
             : InputType.TYPE_CLASS_TEXT);
     edit.setMinHeight(dp(52));
-    parent.addView(edit, new LinearLayout.LayoutParams(-1, -2));
+    LinearLayout.LayoutParams fieldLayout = new LinearLayout.LayoutParams(-1, -2);
+    fieldLayout.setMargins(0, dp(3), 0, dp(12));
+    parent.addView(edit, fieldLayout);
     return edit;
   }
 
@@ -183,14 +234,14 @@ public class MainActivity extends Activity {
     colors();
     root = column();
     root.setBackgroundColor(background);
-    root.setPadding(dp(16), dp(12), dp(16), dp(6));
+    root.setPadding(dp(20), dp(12), dp(20), dp(6));
     setContentView(root);
     root.setOnApplyWindowInsetsListener(
         (v, insets) -> {
           v.setPadding(
-              dp(16) + insets.getSystemWindowInsetLeft(),
+              dp(20) + insets.getSystemWindowInsetLeft(),
               dp(12) + insets.getSystemWindowInsetTop(),
-              dp(16) + insets.getSystemWindowInsetRight(),
+              dp(20) + insets.getSystemWindowInsetRight(),
               dp(6) + insets.getSystemWindowInsetBottom());
           return insets;
         });
@@ -302,7 +353,8 @@ public class MainActivity extends Activity {
     heading.setGravity(Gravity.CENTER_VERTICAL);
     brand = text("WISP Radius", 24, ink);
     heading.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-    heading.addView(button("Account", this::accountDialog));
+    Button account = button("Account", this::accountDialog);
+    heading.addView(account, new LinearLayout.LayoutParams(-2, dp(46)));
     root.addView(heading);
     status = text("Connecting…", 12, muted);
     root.addView(status);
@@ -313,9 +365,13 @@ public class MainActivity extends Activity {
     HorizontalScrollView nav = new HorizontalScrollView(this);
     nav.setHorizontalScrollBarEnabled(false);
     navigation = new LinearLayout(this);
+    navigation.setPadding(dp(6), dp(6), dp(6), dp(6));
+    navigation.setBackground(shape(surface));
     nav.addView(navigation);
     root.addView(nav);
-    root.addView(text("Powered by Net2Net", 11, muted));
+    TextView footer = text("Powered by Net2Net", 11, muted);
+    footer.setGravity(Gravity.CENTER);
+    root.addView(footer);
     String[] sections =
         admin()
             ? new String[] {
@@ -330,8 +386,8 @@ public class MainActivity extends Activity {
               "Settings"
             }
             : new String[] {"Overview", "Usage", "History"};
-    for (String name : sections)
-      navigation.addView(
+    for (String name : sections) {
+      Button destination =
           button(
               name,
               () -> {
@@ -340,27 +396,55 @@ public class MainActivity extends Activity {
                 persist();
                 render();
                 refresh();
-              }));
+              });
+      destination.setTag(name);
+      LinearLayout.LayoutParams navLayout = new LinearLayout.LayoutParams(-2, dp(46));
+      navLayout.setMargins(dp(2), 0, dp(2), 0);
+      navigation.addView(destination, navLayout);
+    }
   }
 
   private void accountDialog() {
-    new AlertDialog.Builder(this)
-        .setTitle(identity.optString("display_name", saved.optString("username")))
-        .setMessage(saved.optString("server") + "\n\n" + pretty(identity.optString("role")))
-        .setPositiveButton("Close", null)
-        .setNeutralButton(
-            "Sign out / change server",
-            (d, w) -> {
-              generation++;
-              saved.remove("password");
-              saved.remove("identity");
-              saved.remove("cache");
-              cache = new JSONObject();
-              vault.save(saved);
-              identity = null;
-              loginScreen("");
-            })
-        .show();
+    AlertDialog account =
+        new AlertDialog.Builder(this)
+            .setTitle(identity.optString("display_name", saved.optString("username")))
+            .setMessage(saved.optString("server") + "\n\n" + pretty(identity.optString("role")))
+            .setPositiveButton("Close", null)
+            .setNeutralButton(
+                "Sign out / change server",
+                (d, w) -> {
+                  generation++;
+                  saved.remove("password");
+                  saved.remove("identity");
+                  saved.remove("cache");
+                  cache = new JSONObject();
+                  vault.save(saved);
+                  identity = null;
+                  loginScreen("");
+                })
+            .show();
+    polishDialog(account);
+  }
+
+  private void polishDialog(AlertDialog dialog) {
+    if (dialog.getWindow() != null) {
+      dialog.getWindow().setBackgroundDrawable(shape(surface));
+      dialog.getWindow().getDecorView().setClipToOutline(true);
+      dialog.getWindow().setDimAmount(0.6f);
+    }
+    for (int which :
+        new int[] {
+          AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL
+        }) {
+      Button control = dialog.getButton(which);
+      if (control == null) continue;
+      control.setAllCaps(false);
+      control.setTextColor(accent);
+      control.setBackgroundTintList(null);
+      control.setBackground(
+          new RippleDrawable(ColorStateList.valueOf(0x2280CBC4), shape(soft), null));
+      control.setPadding(dp(18), dp(8), dp(18), dp(8));
+    }
   }
 
   private void persist() {
@@ -568,7 +652,19 @@ public class MainActivity extends Activity {
       image.setScaleType(ImageView.ScaleType.FIT_CENTER);
       content.addView(image, new LinearLayout.LayoutParams(-1, dp(72)));
     }
-    content.addView(text(section, 28, ink));
+    for (int i = 0; i < navigation.getChildCount(); i++) {
+      Button item = (Button) navigation.getChildAt(i);
+      boolean selected = section.equals(item.getTag());
+      item.setTextColor(selected ? (dark ? Color.parseColor("#102C35") : Color.WHITE) : muted);
+      item.setBackground(
+          new RippleDrawable(
+              ColorStateList.valueOf(0x2280CBC4), shape(selected ? accent : surface), null));
+      item.setSelected(selected);
+    }
+    TextView pageTitle = text(section, 27, ink);
+    pageTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+    pageTitle.setPadding(0, dp(14), 0, dp(16));
+    content.addView(pageTitle);
     if (admin()) {
       if (section.equals("Overview")) adminOverview();
       else if (section.equals("Settings")) settingsScreen();
@@ -754,11 +850,46 @@ public class MainActivity extends Activity {
 
   private void adminOverview() {
     JSONObject dashboard = object("/api/dashboard");
-    LinearLayout box = card("Network at a glance");
-    for (String key :
-        new String[] {
-          "subscribers", "online", "suspended", "unlinked", "routers_online", "routers_total"
-        }) metric(box, pretty(key), dashboard.has(key) ? dashboard.optString(key) : "—");
+    LinearLayout hero = card("");
+    GradientDrawable gradient =
+        new GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            new int[] {Color.parseColor("#49316F"), Color.parseColor("#14576A")});
+    gradient.setCornerRadius(dp(28));
+    hero.setBackground(gradient);
+    hero.addView(text("YOUR NETWORK, LIVE", 12, Color.parseColor("#D7E4F1")));
+    TextView connected = text(dashboard.optString("online", "—"), 46, Color.WHITE);
+    connected.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+    hero.addView(connected);
+    hero.addView(text("Connections online", 17, Color.WHITE));
+    hero.addView(
+        text("Refreshing automatically · every 15 seconds", 12, Color.parseColor("#D7E4F1")));
+    String[] keys = {"subscribers", "suspended", "routers_online", "unlinked"};
+    String[] labels = {"Subscribers", "Suspended", "Routers online", "Awaiting UISP link"};
+    for (int rowIndex = 0; rowIndex < 2; rowIndex++) {
+      LinearLayout row = new LinearLayout(this);
+      content.addView(row);
+      for (int columnIndex = 0; columnIndex < 2; columnIndex++) {
+        int index = rowIndex * 2 + columnIndex;
+        LinearLayout tile = column();
+        tile.setPadding(dp(18), dp(14), dp(18), dp(16));
+        GradientDrawable tileShape = shape(surface);
+        tileShape.setStroke(dp(1), border);
+        tile.setBackground(tileShape);
+        String value = dashboard.optString(keys[index], "—");
+        if (keys[index].equals("routers_online"))
+          value += " / " + dashboard.optString("routers_total", "—");
+        TextView number =
+            text(value, 30, index == 1 ? Color.parseColor(dark ? "#F4BD92" : "#A75619") : ink);
+        number.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        tile.addView(number);
+        tile.addView(text(labels[index], 12, muted));
+        LinearLayout.LayoutParams tileLayout = new LinearLayout.LayoutParams(0, -2, 1);
+        tileLayout.setMargins(
+            columnIndex == 0 ? 0 : dp(7), 0, columnIndex == 0 ? dp(7) : 0, dp(14));
+        row.addView(tile, tileLayout);
+      }
+    }
     JSONArray attention = dashboard.optJSONArray("attention");
     if (attention != null)
       for (int i = 0; i < attention.length(); i++)
@@ -964,6 +1095,7 @@ public class MainActivity extends Activity {
                       action.run();
                     }));
     dialog.show();
+    polishDialog(dialog);
   }
 
   private JSONObject schema(String name) {
@@ -1084,6 +1216,9 @@ public class MainActivity extends Activity {
         fields.addView(text(pretty(key.replace("_id", "")), 13, muted));
         Spinner spin = new Spinner(this);
         spin.setAdapter(adapter(labels));
+        spin.setBackground(shape(soft));
+        spin.setPadding(dp(14), dp(10), dp(14), dp(10));
+        spin.setMinimumHeight(dp(52));
         spin.setSelection(selected);
         fields.addView(spin);
         values.put(
@@ -1105,6 +1240,9 @@ public class MainActivity extends Activity {
         fields.addView(text(pretty(key), 13, muted));
         Spinner spin = new Spinner(this);
         spin.setAdapter(adapter(labels));
+        spin.setBackground(shape(soft));
+        spin.setPadding(dp(14), dp(10), dp(14), dp(10));
+        spin.setMinimumHeight(dp(52));
         int selected = labels.indexOf(initial.toString());
         spin.setSelection(Math.max(0, selected));
         fields.addView(spin);
@@ -1169,6 +1307,7 @@ public class MainActivity extends Activity {
                       }
                     }));
     dialog.show();
+    polishDialog(dialog);
   }
 
   private ArrayAdapter<String> adapter(List<String> items) {
