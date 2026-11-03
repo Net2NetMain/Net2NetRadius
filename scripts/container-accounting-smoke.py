@@ -5,6 +5,8 @@ import time
 
 username = "android-collector-smoke"
 identifier = "android-smoke-" + str(time.time_ns())
+with sqlite3.connect("/data/net2net.db") as database:
+    previous_id = database.execute("SELECT COALESCE(MAX(id),0) FROM accountingsession").fetchone()[0]
 packet = (
     f'User-Name = "{username}"\nAcct-Session-Id = "{identifier}"\n'
     "Acct-Status-Type = Interim-Update\nNAS-IP-Address = 127.0.0.1\n"
@@ -19,8 +21,8 @@ assert result.returncode == 0, result.stderr
 for attempt in range(15):
     with sqlite3.connect("/data/net2net.db") as database:
         row = database.execute(
-            "SELECT output_bytes,input_bytes FROM accountingsession WHERE username=? ORDER BY id DESC LIMIT 1",
-            (username,),
+            "SELECT output_bytes,input_bytes FROM accountingsession WHERE username=? AND id>? ORDER BY id DESC LIMIT 1",
+            (username, previous_id),
         ).fetchone()
     if row == (123456, 789):
         print("FreeRADIUS UDP accounting -> journal -> database: passed")
