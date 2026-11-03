@@ -12,6 +12,21 @@ import org.json.JSONObject;
 public class DeviceSmokeTest extends Instrumentation {
   private Bundle arguments;
   private Activity activity;
+  private boolean keepLogin;
+
+  private void capture(String name) throws Exception {
+    final android.graphics.Bitmap[] rendered = new android.graphics.Bitmap[1];
+    runOnMainSync(() -> {
+      View view=activity.getWindow().getDecorView();
+      rendered[0]=android.graphics.Bitmap.createBitmap(view.getWidth(),view.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
+      view.draw(new android.graphics.Canvas(rendered[0]));
+    });
+    android.graphics.Bitmap bitmap = rendered[0];
+    try (java.io.FileOutputStream out = new java.io.FileOutputStream(new java.io.File(getTargetContext().getExternalFilesDir(null), name + ".png"))) {
+      bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out);
+    }
+    bitmap.recycle();
+  }
 
   @Override
   public void onCreate(Bundle arguments) {
@@ -77,7 +92,7 @@ public class DeviceSmokeTest extends Instrumentation {
     runOnMainSync(
         () -> {
           for (View v : all(activity.getWindow().getDecorView()))
-            if (v instanceof TextView) visible.append(((TextView) v).getText()).append(" | ");
+            if (v instanceof TextView && !(v instanceof EditText)) visible.append(((TextView) v).getText()).append(" | ");
         });
     throw new AssertionError("Timed out waiting for " + text + "; visible: " + visible);
   }
@@ -109,8 +124,21 @@ public class DeviceSmokeTest extends Instrumentation {
               new Intent(getTargetContext(), MainActivity.class)
                   .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
       await("Sign in to your WISP");
+      if (arguments.getString("mode", "").equals("read-only")) {
+        login(arguments.getString("username"), arguments.getString("password"));
+        click("Subscribers"); await("Updated ");
+        click("Packages"); await("Updated ");
+        click("Routers"); await("Updated ");
+        click("IP pools"); await("Updated ");
+        click("Settings"); await("Updated ");
+        click("Overview"); await("Updated ");
+        keepLogin=arguments.getString("keepLogin", "false").equals("true");
+        result.putString("stream", "PASS: HTTPS native administrator login and read-only production screens\n");
+        finish(Activity.RESULT_OK,result); return;
+      }
       login("phone-customer", "Phone-test-2026!");
       await("phone-customer");
+      capture("customer");
       click("Usage");
       await("Recorded usage");
       click("History");
@@ -130,6 +158,7 @@ public class DeviceSmokeTest extends Instrumentation {
       login("device-admin", "Phone-test-2026!");
       click("Subscribers");
       await("Updated ");
+      capture("administrator");
       click("+ Add subscribers");
       AlertDialog create = dialog();
       if (create == null) throw new AssertionError("Create subscriber form not available");
@@ -191,7 +220,7 @@ public class DeviceSmokeTest extends Instrumentation {
       finish(Activity.RESULT_CANCELED, result);
     } finally {
       if (activity != null) runOnMainSync(() -> activity.finish());
-      vault.save(original);
+      if(!keepLogin)vault.save(original);
     }
   }
 }
