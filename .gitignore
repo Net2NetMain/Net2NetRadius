@@ -19,3 +19,10 @@ data/
 radius_entries_review*.csv
 *.rsc
 *.tsbuildinfo
+/ANDROID APP/.gradle/
+/ANDROID APP/.idea/
+/ANDROID APP/local.properties
+/ANDROID APP/**/build/
+/ANDROID APP/*.jks
+/ANDROID APP/*.keystore
+/ANDROID APP/signing.properties

@@ -1,0 +1,6 @@
+plugins { id 'com.android.application' version '8.7.3' apply false }
+def local = new Properties()
+if (file('local.properties').exists()) file('local.properties').withInputStream { local.load(it) }
+if (local['wisp.buildRoot']) {
+    subprojects { layout.buildDirectory = file(local['wisp.buildRoot'] + '/' + project.name) }
+}

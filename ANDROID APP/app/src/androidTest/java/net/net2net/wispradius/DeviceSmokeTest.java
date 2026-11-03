@@ -1,0 +1,197 @@
+package net.net2net.wispradius;
+
+import android.app.*;
+import android.content.Intent;
+import android.os.Bundle;
+import android.view.*;
+import android.widget.*;
+import java.util.*;
+import org.json.JSONObject;
+
+/** Explicit local-test-server runner; never supplies or discovers production credentials. */
+public class DeviceSmokeTest extends Instrumentation {
+  private Bundle arguments;
+  private Activity activity;
+
+  @Override
+  public void onCreate(Bundle arguments) {
+    this.arguments = arguments;
+    start();
+  }
+
+  private List<View> all(View view) {
+    List<View> result = new ArrayList<>();
+    result.add(view);
+    if (view instanceof ViewGroup)
+      for (int i = 0; i < ((ViewGroup) view).getChildCount(); i++)
+        result.addAll(all(((ViewGroup) view).getChildAt(i)));
+    return result;
+  }
+
+  private List<EditText> edits() {
+    List<EditText> fields = new ArrayList<>();
+    for (View v : all(activity.getWindow().getDecorView()))
+      if (v instanceof EditText) fields.add((EditText) v);
+    return fields;
+  }
+
+  private AlertDialog dialog() throws Exception {
+    java.lang.reflect.Field field = MainActivity.class.getDeclaredField("editor");
+    field.setAccessible(true);
+    return (AlertDialog) field.get(activity);
+  }
+
+  private void confirm() throws Exception {
+    AlertDialog dialog = dialog();
+    runOnMainSync(() -> dialog.getButton(-1).performClick());
+    waitForIdleSync();
+  }
+
+  private void click(String label) {
+    runOnMainSync(
+        () -> {
+          for (View view : all(activity.getWindow().getDecorView()))
+            if (view instanceof Button && ((Button) view).getText().toString().equals(label)) {
+              view.performClick();
+              return;
+            }
+          throw new AssertionError("Missing button " + label);
+        });
+    waitForIdleSync();
+  }
+
+  private void await(String text) throws Exception {
+    long until = System.currentTimeMillis() + 30000;
+    while (System.currentTimeMillis() < until) {
+      final boolean[] found = {false};
+      runOnMainSync(
+          () -> {
+            for (View v : all(activity.getWindow().getDecorView()))
+              if (v instanceof TextView && ((TextView) v).getText().toString().contains(text))
+                found[0] = true;
+          });
+      if (found[0]) return;
+      Thread.sleep(200);
+    }
+    StringBuilder visible = new StringBuilder();
+    runOnMainSync(
+        () -> {
+          for (View v : all(activity.getWindow().getDecorView()))
+            if (v instanceof TextView) visible.append(((TextView) v).getText()).append(" | ");
+        });
+    throw new AssertionError("Timed out waiting for " + text + "; visible: " + visible);
+  }
+
+  private void login(String user, String pass) throws Exception {
+    runOnMainSync(
+        () -> {
+          List<EditText> fields = edits();
+          fields.get(0).setText(arguments.getString("server", "http://127.0.0.1:18080"));
+          fields.get(1).setText(user);
+          fields.get(2).setText(pass);
+        });
+    click("Sign in");
+    await("Updated ");
+  }
+
+  @Override
+  public void onStart() {
+    Bundle result = new Bundle();
+    Vault vault = new Vault(getTargetContext());
+    JSONObject original = vault.load();
+    try {
+      vault.save(new JSONObject().put("probe", "device-encryption-check"));
+      if (!vault.load().optString("probe").equals("device-encryption-check"))
+        throw new AssertionError("Encrypted settings failed");
+      vault.save(new JSONObject());
+      activity =
+          startActivitySync(
+              new Intent(getTargetContext(), MainActivity.class)
+                  .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+      await("Sign in to your WISP");
+      login("phone-customer", "Phone-test-2026!");
+      await("phone-customer");
+      click("Usage");
+      await("Recorded usage");
+      click("History");
+      await("Connection history");
+      runOnMainSync(() -> activity.finish());
+      activity =
+          startActivitySync(
+              new Intent(getTargetContext(), MainActivity.class)
+                  .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+      await("Updated ");
+      runOnMainSync(() -> activity.finish());
+      vault.save(new JSONObject());
+      activity =
+          startActivitySync(
+              new Intent(getTargetContext(), MainActivity.class)
+                  .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+      login("device-admin", "Phone-test-2026!");
+      click("Subscribers");
+      await("Updated ");
+      click("+ Add subscribers");
+      AlertDialog create = dialog();
+      if (create == null) throw new AssertionError("Create subscriber form not available");
+      runOnMainSync(
+          () -> {
+            int edit = 0;
+            for (View v : all(create.getWindow().getDecorView())) {
+              if (v instanceof EditText)
+                ((EditText) v).setText(edit++ == 0 ? "phone-created" : "Phone-create-2026!");
+              if (v instanceof Spinner) ((Spinner) v).setSelection(1);
+            }
+          });
+      confirm();
+      await("phone-created");
+      runOnMainSync(() -> edits().get(0).setText("phone-created"));
+      click("Search");
+      click("Disable");
+      confirm();
+      await("Status: disabled");
+      click("Enable");
+      confirm();
+      await("Status: active");
+      click("Delete");
+      AlertDialog delete = dialog();
+      runOnMainSync(
+          () -> {
+            for (View v : all(delete.getWindow().getDecorView()))
+              if (v instanceof EditText) ((EditText) v).setText("delete");
+          });
+      confirm();
+      if (!delete.isShowing()) throw new AssertionError("Lowercase delete must be rejected");
+      runOnMainSync(
+          () -> {
+            for (View v : all(delete.getWindow().getDecorView()))
+              if (v instanceof EditText) ((EditText) v).setText("Delete");
+          });
+      confirm();
+      await("No records");
+      click("Settings");
+      await("Updated ");
+      click("Edit platform secrets");
+      if (dialog() == null) throw new AssertionError("Platform settings form missing");
+      runOnMainSync(
+          () -> {
+            try {
+              dialog().dismiss();
+            } catch (Exception e) {
+              throw new RuntimeException(e);
+            }
+          });
+      result.putString(
+          "stream",
+          "PASS: customer statistics/history, saved login, Keystore encryption; admin"
+              + " create/disable/enable/delete, exact Delete confirmation, platform settings"
+              + " form\n");
+      finish(Activity.RESULT_OK, result);
+    } catch (Throwable e) {
+      result.putString("stream", "FAIL: " + e);
+      finish(Activity.RESULT_CANCELED, result);
+    } finally {
+      if (activity != null) runOnMainSync(() -> activity.finish());
+      vault.save(original);
+    }
+  }
+}

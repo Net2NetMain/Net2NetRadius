@@ -1,0 +1,32 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'net.net2net.wispradius'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'net.net2net.wispradius'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+        testInstrumentationRunner 'net.net2net.wispradius.DeviceSmokeTest'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    def signingFile = rootProject.file('signing.properties')
+    if (signingFile.exists()) {
+        def signingValues = new Properties()
+        signingFile.withInputStream { signingValues.load(it) }
+        signingConfigs {
+            release {
+                storeFile file(signingValues['storeFile'])
+                storePassword signingValues['storePassword']
+                keyAlias signingValues['keyAlias']
+                keyPassword signingValues['keyPassword']
+            }
+        }
+        buildTypes { release { signingConfig signingConfigs.release } }
+    }
+}
+dependencies {
+    implementation 'com.caverock:androidsvg-aar:1.4'
+    testImplementation 'junit:junit:4.13.2'
+}

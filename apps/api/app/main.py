@@ -5,6 +5,7 @@ import os
 import re
 import signal
 import sqlite3
+import threading
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
@@ -62,6 +63,8 @@ from .routeros import (
 from .security import decrypt_secret, encrypt_secret
 from .uisp import test_connection as test_uisp_connection
 from .platform_config import ensure_platform_configuration
+from .accounting import collect
+from .mobile import routes as mobile_routes
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -166,10 +169,17 @@ bootstrap_db()
 async def lifespan(_: FastAPI):
     settings.validate_production()
     bootstrap_db()
-    yield
+    stop = threading.Event()
+    collector = threading.Thread(target=collect, args=(stop, Path(settings.data_dir) / "accounting", engine), daemon=True)
+    collector.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        collector.join(timeout=10)
 
 
-app = FastAPI(title=settings.app_name, version="1.0.1", lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.web_origin],
@@ -779,8 +789,10 @@ def dashboard(session: SessionDep, _: AdminIdentity):
             live_errors += 1
             logger.warning("Could not read dashboard live sessions from %s: %s", router.host, exc)
     live_usernames = {item.get("username") for item in live_sessions if item.get("username")}
-    # SQLite returns stored accounting timestamps without timezone information.
-    now_time = datetime.now()  # noqa: DTZ005 - normalized to SQLite's naive timestamps
+    # Normalize legacy SQLite timestamps and newer timezone-aware records to UTC.
+    now_time = datetime.now(UTC)
+    def utc_timestamp(value):
+        return value.replace(tzinfo=UTC) if value and value.tzinfo is None else value
     # Build a meaningful timeline immediately from current RouterOS PPP
     # uptimes; RADIUS accounting supplements it with completed sessions.
     # This avoids a fabricated zero graph while accounting history fills in.
@@ -790,7 +802,7 @@ def dashboard(session: SessionDep, _: AdminIdentity):
         point = now_time - timedelta(hours=hours_ago)
         seconds_ago = hours_ago * 3600
         accounting_concurrent = sum(
-            bool(item.started_at and item.started_at <= point and (not item.stopped_at or item.stopped_at >= point))
+            bool(item.started_at and utc_timestamp(item.started_at) <= point and (not item.stopped_at or utc_timestamp(item.stopped_at) >= point))
             for item in sessions
             if item.username not in live_uptimes
         )
@@ -974,6 +986,8 @@ def branding_logo():
     type_file = LOGO_FILE.with_suffix(".type")
     return Response(content=LOGO_FILE.read_bytes(), media_type=type_file.read_text() if type_file.exists() else "image/png", headers={"Cache-Control": "no-cache"})
 
+
+app.include_router(mobile_routes(current_identity, require_admin, require_superadmin, settings, refresh_radius_policy, apply_pppoe_change))
 
 web_dist = Path("web_dist")
 if web_dist.exists():

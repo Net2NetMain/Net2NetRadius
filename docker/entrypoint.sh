@@ -18,6 +18,23 @@ until python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1
 done
 
 python -m app.freeradius_sync
+# Persist standard FreeRADIUS detail accounting for the API importer.
+mkdir -p /data/accounting
+chown freerad:freerad /data/accounting
+chmod 750 /data/accounting
+cat > /etc/freeradius/3.0/mods-enabled/detail <<'EOF'
+detail {
+    filename = /data/accounting/%{Packet-Src-IP-Address}/detail-%Y%m%d
+    permissions = 0600
+    header = "%t"
+    locking = yes
+    log_packet_header = yes
+    dates_as_integer = yes
+    suppress {
+        User-Password
+    }
+}
+EOF
 freeradius -f &
 radius_pid=$!
 

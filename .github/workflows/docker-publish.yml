@@ -1,0 +1,36 @@
+name: Publish Docker image
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/net2netmain/net2netradius:latest,ghcr.io/net2netmain/net2netradius:1.1.0
+      - uses: docker/login-action@v3
+        if: env.DOCKERHUB_TOKEN != ''
+        with:
+          username: botchris
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        if: env.DOCKERHUB_TOKEN != ''
+        with:
+          context: .
+          push: true
+          tags: botchris/net2netradius:latest,botchris/net2netradius:1.1.0

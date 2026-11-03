@@ -9,6 +9,9 @@ from fastapi import Cookie, HTTPException
 
 from .config import get_settings
 from .platform_config import application_secret
+from .database import SessionDep
+from .models import AppUser, Subscriber, Status
+from sqlmodel import select
 
 COOKIE_NAME = "net2net_session"
 SESSION_SECONDS = 12 * 60 * 60
@@ -52,7 +55,16 @@ def read_token(token: str) -> dict:
         raise HTTPException(401, "Session expired or invalid") from exc
 
 
-def current_identity(net2net_session: str | None = Cookie(default=None)) -> dict:
+def current_identity(session: SessionDep, net2net_session: str | None = Cookie(default=None)) -> dict:
     if not net2net_session:
         raise HTTPException(401, "Login required")
-    return read_token(net2net_session)
+    identity = read_token(net2net_session)
+    if identity["role"] == "client":
+        user = session.exec(select(Subscriber).where(Subscriber.username == identity["sub"])).first()
+        allowed = user is not None and user.status != Status.DISABLED
+    else:
+        user = session.exec(select(AppUser).where(AppUser.username == identity["sub"])).first()
+        allowed = user is not None and user.enabled and user.role.value == identity["role"]
+    if not allowed:
+        raise HTTPException(401, "Account is disabled or no longer exists")
+    return identity
