@@ -12,14 +12,12 @@ The first working scaffold includes:
 - Windows + WSL2 bootstrap scripts (no Docker)
 - Explicit boundaries for UISP sync, MikroTik API, CoA and User Manager import work
 
-## Docker / Unraid beta
-
 ## Native Android app
 
 The **WISP Radius** Android Studio project is in [ANDROID APP](ANDROID%20APP/README.md).
 It supports existing customer/admin accounts, mobile management, encrypted saved
 sign-in, theme following the phone, read-only customer statistics and cached history.
-Install the signed APK from this repository's GitHub Releases. API/container 1.1.0
+Install the [signed APK](ANDROID%20APP/releases/WISP-Radius.apk) from this repository. API/container 1.1.0
 adds persistent FreeRADIUS accounting imports and the mobile management endpoints.
 Keep the existing `/data` mapping and preserve `secret.key` when updating containers.
 
@@ -27,7 +25,7 @@ The `Publish Docker image` workflow publishes GHCR images on version tags and al
 updates `botchris/net2netradius` when the repository has a `DOCKERHUB_TOKEN` Actions
 secret. GHCR package visibility must be public before anonymous Unraid pulls.
 
-### Container setup
+## Docker / Unraid beta
 
 The container runs the web portal, management API and RADIUS authentication/accounting service in one local WISP appliance. It persists all operational data under `/data`.
 

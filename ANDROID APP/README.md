@@ -88,6 +88,6 @@ The first signed release uses the Net2Net key kept outside this repository at
 neither is committed. Preserve these files to sign compatible future updates.
 
 Build with `gradlew.bat :app:assembleRelease`. The result is
-`app/build/outputs/apk/release/app-release.apk`. GitHub Releases distributes the
-signed APK. GitHub Actions builds and checks a debug APK on commits; release
+`app/build/outputs/apk/release/app-release.apk`. The signed APK and its SHA-256
+checksum are published in [releases](releases) in this project. GitHub Actions builds and checks a debug APK on commits; release
 signing stays local until a separate CI signing setup is explicitly configured.
